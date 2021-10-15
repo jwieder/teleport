@@ -2632,6 +2632,8 @@ message RegisterUsingTokenRequest {
     // EC2IdentityDocument is used for Simplified Node Joining to prove the
     // identity of a joining EC2 instance.
     bytes EC2IdentityDocument = 10 [ (gogoproto.jsontag) = "ec2_id" ];
+
+    bytes STSIdentityRequest = 11;
 }
 
 // RecoveryCodes holds a user's recovery code information. Recovery codes allows users to regain

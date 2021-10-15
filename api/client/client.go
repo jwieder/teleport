@@ -2178,3 +2178,8 @@ func (c *Client) GenerateCertAuthorityCRL(ctx context.Context, req *proto.CertAu
 	resp, err := c.grpc.GenerateCertAuthorityCRL(ctx, req)
 	return resp, trail.FromGRPC(err)
 }
+
+func (c *Client) RegisterUsingIAMMethod(ctx context.Context) (proto.AuthService_RegisterUsingIAMMethodClient, error) {
+	stream, err := c.grpc.RegisterUsingIAMMethod(ctx)
+	return stream, trail.FromGRPC(err)
+}

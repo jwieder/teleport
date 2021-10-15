@@ -18,13 +18,16 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
 	"time"
 
 	"github.com/coreos/go-semver/semver"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/gravitational/trace"
 	"github.com/gravitational/trace/trail"
@@ -3450,6 +3453,55 @@ func (g *GRPCServer) GenerateCertAuthorityCRL(ctx context.Context, req *proto.Ce
 		return nil, trace.Wrap(err)
 	}
 	return &proto.CRL{CRL: crl}, nil
+}
+
+func (g *GRPCServer) RegisterUsingIAMMethod(srv proto.AuthService_RegisterUsingIAMMethodServer) error {
+	fmt.Println("NIC got RegisterUsingIAMMethod request")
+	auth, err := g.authenticate(srv.Context())
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	fmt.Println("NIC auth:", auth)
+
+	challengeRawBytes := make([]byte, 32)
+	if _, err := rand.Read(challengeRawBytes); err != nil {
+		return trace.Wrap(err)
+	}
+
+	encoding := base64.RawStdEncoding
+	challengeBase64 := make([]byte, encoding.EncodedLen(len(challengeRawBytes)))
+	encoding.Encode(challengeBase64, challengeRawBytes)
+
+	challengeString := string(challengeBase64)
+
+	if err = srv.Send(&proto.RegisterUsingIAMMethodResponse{
+		Challenge: challengeString,
+	}); err != nil {
+		return trace.Wrap(err)
+	}
+
+	req, err := srv.Recv()
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	fmt.Println("NIC challenge response:")
+	spew.Config.Indent = "\t"
+	spew.Dump(req)
+
+	if err := auth.authServer.CheckIAMRequest(srv.Context(), challengeString, *req); err != nil {
+		return trace.Wrap(err)
+	}
+
+	certs, err := auth.RegisterUsingToken(*req)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	err = srv.Send(&proto.RegisterUsingIAMMethodResponse{
+		Certs: certs,
+	})
+	return trace.Wrap(err)
 }
 
 // GRPCServerConfig specifies GRPC server configuration

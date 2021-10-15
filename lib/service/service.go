@@ -634,9 +634,9 @@ func NewTeleport(cfg *Config) (*TeleportProcess, error) {
 			cfg.Log.Infof("Taking host UUID from first identity: %v.", cfg.HostUUID)
 		} else {
 			switch cfg.JoinMethod {
-			case JoinMethodToken:
+			case auth.JoinMethodToken, auth.JoinMethodIAM:
 				cfg.HostUUID = uuid.New()
-			case JoinMethodEC2:
+			case auth.JoinMethodEC2:
 				cfg.HostUUID, err = getEC2NodeID()
 				if err != nil {
 					return nil, trace.Wrap(err)

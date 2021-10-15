@@ -17,9 +17,11 @@ limitations under the License.
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 
 	"github.com/gravitational/teleport"
 	"github.com/gravitational/teleport/api/client"
@@ -30,6 +32,8 @@ import (
 	"github.com/gravitational/teleport/lib/tlsca"
 	"github.com/gravitational/teleport/lib/utils"
 
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/gravitational/trace"
 	"github.com/jonboulle/clockwork"
 )
@@ -111,6 +115,8 @@ type RegisterParams struct {
 	// EC2IdentityDocument is used for Simplified Node Joining to prove the
 	// identity of a joining EC2 instance.
 	EC2IdentityDocument []byte
+
+	JoinMethod JoinMethod
 }
 
 func (r *RegisterParams) setDefaults() {
@@ -118,6 +124,20 @@ func (r *RegisterParams) setDefaults() {
 		r.Clock = clockwork.NewRealClock()
 	}
 }
+
+// JoinMethod is the method the instance will use to join the auth server.
+type JoinMethod int
+
+const (
+	// JoinMethodToken means the instance will use a basic token.
+	JoinMethodToken JoinMethod = iota
+	// JoinMethodEC2 means the instance will use the EC2 method for Simplified
+	// Node Joining.
+	JoinMethodEC2
+	// JoinMethodIAM means the instance will use the IAM method for Simplified
+	// Node Joining.
+	JoinMethodIAM
+)
 
 // CredGetter is an interface for a client that can be used to get host
 // credentials. This interface is needed because lib/client can not be imported
@@ -145,9 +165,13 @@ func Register(params RegisterParams) (*Identity, error) {
 	}
 	registerThroughAuth := registerMethod{registerThroughAuth, "with auth server"}
 	registerThroughProxy := registerMethod{registerThroughProxy, "via proxy server"}
+	registerUsingIAMMethod := registerMethod{registerUsingIAMMethod, "with IAM method"}
 
 	registerMethods := []registerMethod{registerThroughAuth, registerThroughProxy}
-	if params.GetHostCredentials == nil {
+	if params.JoinMethod == JoinMethodIAM {
+		log.Debugf("Registering with IAM method.")
+		registerMethods = []registerMethod{registerUsingIAMMethod}
+	} else if params.GetHostCredentials == nil {
 		log.Debugf("Missing client, it is not possible to register through proxy.")
 		registerMethods = []registerMethod{registerThroughAuth}
 	} else if authServerIsProxy(params.Servers) {
@@ -205,6 +229,76 @@ func registerThroughProxy(token string, params RegisterParams) (*Identity, error
 	}
 
 	return ReadIdentityFromKeyPair(params.PrivateKey, certs)
+}
+
+func registerUsingIAMMethod(token string, params RegisterParams) (*Identity, error) {
+	ctx := context.TODO()
+
+	tlsConfig := utils.TLSConfig(params.CipherSuites)
+	tlsConfig.Time = params.Clock.Now
+	tlsConfig.InsecureSkipVerify = true
+
+	clientConfig := client.Config{
+		Addrs: utils.NetAddrsToStrings(params.Servers),
+		Credentials: []client.Credentials{
+			client.LoadTLS(tlsConfig),
+		},
+		DialInBackground:           true,
+		ALPNSNIAuthDialClusterName: "one",
+	}
+
+	authClient, err := client.New(ctx, clientConfig)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	stream, err := authClient.RegisterUsingIAMMethod(ctx)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	challengeResponse, err := stream.Recv()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	fmt.Println("NIC challenge:", challengeResponse.Challenge)
+
+	sess := session.New()
+	stsService := sts.New(sess)
+	req, _ := stsService.GetCallerIdentityRequest(&sts.GetCallerIdentityInput{})
+	req.HTTPRequest.Header.Set("X-Teleport-Challenge", challengeResponse.Challenge)
+	req.HTTPRequest.Header.Set("accept", "application/json")
+	if err := req.Sign(); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	var signedRequest bytes.Buffer
+	if err := req.HTTPRequest.Write(&signedRequest); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	fmt.Println("NIC signedRequest:", string(signedRequest.Bytes()))
+
+	if err := stream.Send(&types.RegisterUsingTokenRequest{
+		Token:                token,
+		HostID:               params.ID.HostUUID,
+		NodeName:             params.ID.NodeName,
+		Role:                 params.ID.Role,
+		AdditionalPrincipals: params.AdditionalPrincipals,
+		DNSNames:             params.DNSNames,
+		PublicTLSKey:         params.PublicTLSKey,
+		PublicSSHKey:         params.PublicSSHKey,
+		STSIdentityRequest:   signedRequest.Bytes(),
+	}); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	certs, err := stream.Recv()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	return ReadIdentityFromKeyPair(params.PrivateKey, certs.Certs)
 }
 
 // registerThroughAuth is used to register through the auth server.
