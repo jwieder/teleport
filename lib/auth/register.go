@@ -115,8 +115,8 @@ type RegisterParams struct {
 	// EC2IdentityDocument is used for Simplified Node Joining to prove the
 	// identity of a joining EC2 instance.
 	EC2IdentityDocument []byte
-
-	JoinMethod JoinMethod
+	// JoinMethod is the joining method used for this register request.
+	JoinMethod types.JoinMethod
 }
 
 func (r *RegisterParams) setDefaults() {
@@ -124,20 +124,6 @@ func (r *RegisterParams) setDefaults() {
 		r.Clock = clockwork.NewRealClock()
 	}
 }
-
-// JoinMethod is the method the instance will use to join the auth server.
-type JoinMethod int
-
-const (
-	// JoinMethodToken means the instance will use a basic token.
-	JoinMethodToken JoinMethod = iota
-	// JoinMethodEC2 means the instance will use the EC2 method for Simplified
-	// Node Joining.
-	JoinMethodEC2
-	// JoinMethodIAM means the instance will use the IAM method for Simplified
-	// Node Joining.
-	JoinMethodIAM
-)
 
 // CredGetter is an interface for a client that can be used to get host
 // credentials. This interface is needed because lib/client can not be imported
@@ -168,7 +154,7 @@ func Register(params RegisterParams) (*Identity, error) {
 	registerUsingIAMMethod := registerMethod{registerUsingIAMMethod, "with IAM method"}
 
 	registerMethods := []registerMethod{registerThroughAuth, registerThroughProxy}
-	if params.JoinMethod == JoinMethodIAM {
+	if params.JoinMethod == types.JoinMethodIAM {
 		log.Debugf("Registering with IAM method.")
 		registerMethods = []registerMethod{registerUsingIAMMethod}
 	} else if params.GetHostCredentials == nil {

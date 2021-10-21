@@ -321,18 +321,17 @@ func (a *Server) CheckEC2Request(ctx context.Context, req types.RegisterUsingTok
 		}
 		return trace.Wrap(err)
 	}
-	tokenRequiresIID := len(provisionToken.GetAllowRules()) > 0
+	if err = provisionToken.CheckAndSetDefaults(); err != nil {
+		return trace.Wrap(err)
+	}
 
-	if !requestIncludesIID && !tokenRequiresIID {
+	if provisionToken.GetJoinMethod() != types.JoinMethodEC2 {
+		if requestIncludesIID {
+			return trace.BadParameter("an EC2 Identity Document is included in a register request for a token which does not expect it")
+		}
 		// not a simplified node joining request, pass on to the regular token
 		// checking logic
 		return nil
-	}
-	if tokenRequiresIID && !requestIncludesIID {
-		return trace.AccessDenied("this token requires an EC2 Identity Document from the node")
-	}
-	if !tokenRequiresIID && requestIncludesIID {
-		return trace.BadParameter("an EC2 Identity Document is included in a register request for a token which does not expect it")
 	}
 
 	log.Debugf("Received Simplified Node Joining request for host %q", req.HostID)

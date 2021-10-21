@@ -667,9 +667,14 @@ message ProvisionTokenV2List {
     repeated ProvisionTokenV2 ProvisionTokens = 1;
 }
 
+// TokenRule is a rule that a joining node must match in order to use the
+// associated token.
 message TokenRule {
+    // AWSAccount is the AWS account ID.
     string AWSAccount = 1 [ (gogoproto.jsontag) = "aws_account,omitempty" ];
+    // AWSRegions is a list of AWS regions a node is allowed to join from.
     repeated string AWSRegions = 2 [ (gogoproto.jsontag) = "aws_regions,omitempty" ];
+    // AWSRole is the AWS role ARN.
     string AWSRole = 3 [ (gogoproto.jsontag) = "aws_role,omitempty" ];
 }
 
@@ -680,9 +685,17 @@ message ProvisionTokenSpecV2 {
     // certificates issued to the user of the token
     repeated string Roles = 1
         [ (gogoproto.jsontag) = "roles", (gogoproto.casttype) = "SystemRole" ];
-    repeated TokenRule allow = 2 [ (gogoproto.jsontag) = "allow,omitempty" ];
+    // Allow is a list of TokenRules, nodes using this token must match one
+    // allow rule to use this token.
+    repeated TokenRule Allow = 2 [ (gogoproto.jsontag) = "allow,omitempty" ];
+    // AWSIIDTTL is the TTL to use for AWS EC2 Instance Identity Documents used
+    // to join the cluster with this token.
     int64 AWSIIDTTL = 3
         [ (gogoproto.jsontag) = "aws_iid_ttl,omitempty", (gogoproto.casttype) = "Duration" ];
+    // JoinMethod is the joining method nodes must use in order to use this
+    // token.
+    string JoinMethod = 4
+        [ (gogoproto.jsontag) = "join_method", (gogoproto.casttype) = "JoinMethod" ];
 }
 
 // StaticTokensV2 implements the StaticTokens interface.

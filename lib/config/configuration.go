@@ -43,7 +43,6 @@ import (
 	"github.com/gravitational/teleport/api/types"
 	apiutils "github.com/gravitational/teleport/api/utils"
 	"github.com/gravitational/teleport/lib"
-	"github.com/gravitational/teleport/lib/auth"
 	"github.com/gravitational/teleport/lib/backend"
 	"github.com/gravitational/teleport/lib/backend/lite"
 	"github.com/gravitational/teleport/lib/client"
@@ -1851,7 +1850,7 @@ func splitRoles(roles string) []string {
 // applyTokenConfig applies the auth_token and join_params to the config
 func applyTokenConfig(fc *FileConfig, cfg *service.Config) error {
 	if fc.AuthToken != "" {
-		cfg.JoinMethod = auth.JoinMethodToken
+		cfg.JoinMethod = types.JoinMethodToken
 		_, err := cfg.ApplyToken(fc.AuthToken)
 		return trace.Wrap(err)
 	}
@@ -1861,10 +1860,10 @@ func applyTokenConfig(fc *FileConfig, cfg *service.Config) error {
 		}
 		cfg.Token = fc.JoinParams.TokenName
 		switch fc.JoinParams.Method {
-		case "ec2":
-			cfg.JoinMethod = auth.JoinMethodEC2
-		case "iam":
-			cfg.JoinMethod = auth.JoinMethodIAM
+		case string(types.JoinMethodEC2):
+			cfg.JoinMethod = types.JoinMethodEC2
+		case string(types.JoinMethodIAM):
+			cfg.JoinMethod = types.JoinMethodIAM
 		default:
 			return trace.BadParameter(`unknown value for join_params.method: %q, expected "ec2" or "iam"`, fc.JoinParams.Method)
 		}

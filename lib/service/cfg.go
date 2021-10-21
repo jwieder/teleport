@@ -78,7 +78,7 @@ type Config struct {
 	Token string
 
 	// JoinMethod is the method the instance will use to join the auth server
-	JoinMethod auth.JoinMethod
+	JoinMethod types.JoinMethod
 
 	// AuthServers is a list of auth servers, proxies and peer auth servers to
 	// connect to. Yes, this is not just auth servers, the field name is
